@@ -20,9 +20,9 @@
             [clojure.tools.analyzer.passes.jvm.warn-on-reflection :refer [warn-on-reflection]]
             [clojure.tools.analyzer.jvm :as an-jvm]
             [clojure.core.async.impl.protocols :as impl]
+            [clojure.core.async.impl.platform :as platform]
             [clojure.set :as set])
-  (:import [java.util.concurrent.locks Lock]
-           [java.util.concurrent.atomic AtomicReferenceArray]))
+  (:import [clojure.core.async.impl.protocols Lock AtomicReferenceArray]))
 
 (defn debug [x]
   (pprint x)
@@ -36,10 +36,10 @@
 (def ^{:const true :tag 'long} USER-START-IDX 5)
 
 (defn aset-object [^AtomicReferenceArray arr ^long idx o]
-  (.set arr idx o))
+  (impl/set-obj arr idx o))
 
 (defn aget-object [^AtomicReferenceArray arr ^long idx]
-  (.get arr idx))
+  (impl/get-obj arr idx))
 
 (defmacro aset-all!
   [arr & more]
@@ -922,7 +922,7 @@
         local-map (atom {::next-idx local-start-idx})
         block-catches (:block-catches machine)]
     `(fn state-machine#
-       ([] (aset-all! (AtomicReferenceArray. ~state-arr-size)
+       ([] (aset-all! (platform/atomic-reference-array ~state-arr-size)
                       ~FN-IDX state-machine#
                       ~STATE-IDX ~(:start-block machine)))
        ([~state-sym]
@@ -962,7 +962,7 @@
 (defn- fn-handler
   [f]
   (reify
-   Lock
+   impl/Lock
    (lock [_])
    (unlock [_])
 

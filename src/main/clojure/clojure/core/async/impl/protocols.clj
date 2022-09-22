@@ -40,8 +40,28 @@
      (assert (not (nil? itm)))
      (add!* b itm)))
 
-(defprotocol Executor
-  (exec [e runnable] "execute runnable asynchronously"))
-
 ;; Defines a buffer that will never block (return true to full?)
 (defprotocol UnblockingBuffer)
+
+(defprotocol AtomicLong
+  (increment-and-get [a]))
+
+(defprotocol Lock
+  (lock [l])
+  (unlock [l]))
+
+(defprotocol ThreadLocalRandom
+  (next-int [r i]))
+
+(defprotocol Executor
+  (execute [executor runnable]))
+
+(defprotocol ArrayList
+  (add [a v])
+  (to-vec [a])
+  (size [a]))
+
+(defprotocol AtomicReferenceArray
+  (set-obj [a idx o])
+  (get-obj [a idx]))
+

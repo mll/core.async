@@ -8,7 +8,7 @@
 
 (ns clojure.core.async.concurrent-test
   (:require [clojure.test :refer :all]
-            [clojure.core.async.impl.concurrent :as conc])
+            [clojure.core.async.impl.platform :as conc])
   (:import [java.util.concurrent ThreadFactory]))
 
 (deftest test-counted-thread-factory

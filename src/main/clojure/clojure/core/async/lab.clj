@@ -24,11 +24,10 @@
   guarantee any of them will."
   (:require [clojure.core.async :as async]
             [clojure.core.async.impl.protocols :as impl]
-            [clojure.core.async.impl.mutex :as mutex]
-            [clojure.core.async.impl.dispatch :as dispatch]
+            [clojure.core.async.impl.platform :as platform]
             [clojure.core.async.impl.channels :as channels])
   (:import [java.util HashSet Set Collection]
-           [java.util.concurrent.locks Lock]))
+           [clojure.core.async.impl.protocols Lock]))
 
 (deftype MultiplexingReadPort
     [^Lock mutex ^Set read-ports]
@@ -37,7 +36,7 @@
     (if (empty? read-ports)
       (channels/box nil)
       (do
-        (.lock mutex)
+        (impl/lock mutex)
         (let [^Lock handler handler
               commit-handler (fn []
                                (.lock handler)
@@ -46,24 +45,24 @@
                                  take-cb))
               fret (fn [[val alt-port]]
                      (if (nil? val)
-                       (do (.lock mutex)
+                       (do (impl/lock mutex)
                            (.remove read-ports alt-port)
-                           (.unlock mutex)
+                           (impl/unlock mutex)
                            (impl/take! this handler))
                        (when-let [take-cb (commit-handler)]
-                         (dispatch/run #(take-cb val)))))
+                         (platform/run #(take-cb val)))))
               current-ports (seq read-ports)]
           (if-let [alt-res (async/do-alts fret current-ports {})]
             (let [[val alt-port] @alt-res]
               (if (nil? val)
                 (do (.remove read-ports alt-port)
-                    (.unlock mutex)
+                    (impl/unlock mutex)
                     (recur handler))
-                (do (.unlock mutex)
+                (do (impl/unlock mutex)
                     (when-let [take-cb (commit-handler)]
-                      (dispatch/run #(take-cb val))))))
+                      (platform/run #(take-cb val))))))
             (do
-              (.unlock mutex)
+              (impl/unlock mutex)
                 nil)))))))
 
 (defn multiplex
@@ -77,7 +76,7 @@
   available to be read from, parks execution until a value is
   available."
   [& ports]
-  (->MultiplexingReadPort (mutex/mutex) (HashSet. ^Collection ports)))
+  (->MultiplexingReadPort (platform/mutex) (HashSet. ^Collection ports)))
 
 (defn- broadcast-write
   [port-set val handler]
