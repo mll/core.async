@@ -10,7 +10,7 @@
   clojure.core.async.impl.channels
   (:require [clojure.core.async.impl.protocols :as impl]
             [clojure.core.async.impl.platform :as platform])
-  (:import [java.util LinkedList Queue]
+  (:import [java.util LinkedList]
            [clojure.core.async.impl.protocols Lock Buffer]
            [clojure.lang IDeref]))
 
@@ -29,7 +29,7 @@
   (cleanup [_])
   (abort [_]))
 
-(deftype ManyToManyChannel [^LinkedList takes ^LinkedList puts ^Queue buf closed ^Lock mutex add!]
+(deftype ManyToManyChannel [^LinkedList takes ^LinkedList puts ^Buffer buf closed ^Lock mutex add!]
   MMC
   (cleanup
    [_]
