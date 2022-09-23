@@ -7,7 +7,7 @@
 ;;   You must not remove this notice, or any other, from this software.
 
 (ns ^{:skip-wiki true}
-  clojure.core.async.impl.buffers
+  clojure.core.async.impl.platform.buffers
   (:require [clojure.core.async.impl.protocols :as impl])
   (:import [java.util LinkedList]
            [clojure.lang Counted]))

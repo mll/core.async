@@ -7,12 +7,13 @@
 ;;   You must not remove this notice, or any other, from this software.
 
 (ns ^{:skip-wiki true}
-  clojure.core.async.impl.timers
+  clojure.core.async.impl.platform.timers
   (:require [clojure.core.async.impl.protocols :as impl]
             [clojure.core.async.impl.channels :as channels])
   (:import [java.util.concurrent DelayQueue Delayed TimeUnit ConcurrentSkipListMap]))
 
 (set! *warn-on-reflection* true)
+
 
 (defonce ^:private ^DelayQueue timeouts-queue
   (DelayQueue.))

@@ -8,7 +8,7 @@
 
 (ns clojure.core.async.buffers-test
   (:require [clojure.test :refer :all]
-            [clojure.core.async.impl.buffers :refer :all]
+            [clojure.core.async.impl.platform.buffers :refer :all]
             [clojure.core.async.impl.protocols :refer [full? add! remove! close-buf!]]))
 
 (defmacro throws? [expr]

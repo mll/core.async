@@ -7,15 +7,13 @@
 ;;   You must not remove this notice, or any other, from this software.
 
 (ns ^{:skip-wiki true}
-  clojure.core.async.impl.platform
-  (:require [clojure.core.async.impl.protocols :as impl])
-  (:import [java.util.concurrent.atomic AtomicLong]
-           [java.util.concurrent.locks ReentrantLock]
-           [java.util.concurrent Executors Executor ThreadLocalRandom ThreadFactory]
-           [java.util.concurrent.atomic AtomicReferenceArray]
-           [java.util Arrays ArrayList]))
+  clojure.core.async.impl.platform.executor
+  (:import [java.util.concurrent Executors ThreadLocalRandom ThreadFactory]))
 
 (set! *warn-on-reflection* true)
+
+(defprotocol Executor
+  (execute [executor runnable]))
 
 (defonce ^:private 
   ^{:doc "Number of processors reported by the JVM"}
@@ -30,31 +28,8 @@
 
 (defonce ^:private in-dispatch (ThreadLocal.))
 
-
-
-
-(deftype AtomicLongImpl [^AtomicLong platform-long]
-  impl/AtomicLong
-  (increment-and-get [_this] 
-    (.incrementAndGet platform-long)))
-
-(defn atomic-long [] (->AtomicLongImpl (AtomicLong.)))
-
-(deftype LockImpl [^ReentrantLock lock]
-  impl/Lock
-  (lock [_this] (.lock lock))
-  (unlock [_this] (.unlock lock)))
-
-(defn mutex [] (->LockImpl (ReentrantLock.)))
-
-(deftype ThreadLocalRandomImpl [^ThreadLocalRandom random]
-    impl/ThreadLocalRandom
-  (next-int [_this i] (.nextInt random i)))
-
-(defn thread-local-random [] (->ThreadLocalRandomImpl (ThreadLocalRandom/current)))
-
-(deftype ExecutorImpl [^Executor executor]
-  impl/Executor
+(deftype ExecutorImpl [^java.util.concurrent.Executor executor]
+  Executor
   (execute [_this function]
     (.execute executor function)))
 
@@ -89,8 +64,8 @@
                         @pool-size
                         (counted-thread-factory "async-dispatch-%d" true
                           {:init-fn init-fn}))]
-     (reify impl/Executor
-       (impl/execute [_ r]
+     (reify Executor
+       (execute [_ r]
          (.execute executor-svc ^Runnable r))))))
 
 (defonce executor
@@ -110,29 +85,4 @@
 (defn run
   "Runs Runnable r in a thread pool thread"
   [^Runnable r]
-  (impl/execute @executor r))
-
-(defn copy-of [^objects array ^Integer count]
-  (Arrays/copyOf array count))
-
-(deftype ArrayListImpl [a]
-  impl/ArrayList
-  (add [_ v] (swap! a conj v))
-  (size [_] (count @a))
-  (to-vec [_] @a))
-
-(defn array-list [] (->ArrayListImpl (atom [])))
-
-(defn default-exception-handler []
-  (fn [ex]
-    (-> (Thread/currentThread)
-        .getUncaughtExceptionHandler
-        (.uncaughtException (Thread/currentThread) ex))
-    nil))
-
-(deftype AtomicReferenceArrayImpl [a]
-  impl/AtomicReferenceArray
-  (set-obj [_ idx o] (swap! a #(assoc % idx o)))
-  (get-obj [_ idx] (get @a idx)))
-
-(defn atomic-reference-array [size] (->AtomicReferenceArrayImpl (atom (vec (replicate size nil)))))
+  (execute @executor r))

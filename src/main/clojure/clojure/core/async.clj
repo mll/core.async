@@ -23,24 +23,34 @@ to catch and handle."
                             partition-by bounded-count])
   (:require [clojure.core.async.impl.protocols :as impl]
             [clojure.core.async.impl.channels :as channels]
-            [clojure.core.async.impl.buffers :as buffers]
-            [clojure.core.async.impl.timers :as timers]
             [clojure.core.async.impl.ioc-macros :as ioc]
-            [clojure.core.async.impl.platform :as platform]
-            )
-  (:import [clojure.core.async.impl.protocols Lock Executor ArrayList]
+
+            [clojure.core.async.impl.platform.buffers :as buffers]
+            [clojure.core.async.impl.platform.timers :as timers]
+            [clojure.core.async.impl.platform.core :as platform]
+            [clojure.core.async.impl.platform.lock :as lock]
+            [clojure.core.async.impl.platform.atomiclong :as atomic-long]
+            [clojure.core.async.impl.platform.threadlocalrandom :as thread-local-random]
+            [clojure.core.async.impl.platform.executor :as executor]
+            [clojure.core.async.impl.platform.arraylist :as array-list])
+
+  (:import [clojure.core.async.impl.platform.lock Lock]
+           [clojure.core.async.impl.platform.executor Executor]
+           [clojure.core.async.impl.platform.arraylist ArrayList]
            [clojure.lang Var]))
 
 (alias 'core 'clojure.core)
 
 (set! *warn-on-reflection* false)
 
+(println "Loaded")
+
 (defn fn-handler
   ([f]
    (fn-handler f true))
   ([f blockable]
    (reify
-     impl/Lock
+     Lock
      (lock [_])
      (unlock [_])
 
@@ -114,7 +124,7 @@ to catch and handle."
     `(def ~(with-meta op {:arglists `(list ~as) :doc doc})
        (if (Boolean/getBoolean "clojure.core.async.go-checking")
          (fn ~arglist
-           (platform/check-blocking-in-dispatch)
+           (executor/check-blocking-in-dispatch)
            ~@body)
          (fn ~arglist
            ~@body)))))
@@ -155,7 +165,7 @@ to catch and handle."
          (let [val @ret]
            (if on-caller?
              (fn1 val)
-             (platform/run #(fn1 val)))))
+             (executor/run #(fn1 val)))))
        nil)))
 
 (defblockingop >!!
@@ -202,7 +212,7 @@ to catch and handle."
        (let [ret @retb]
          (if on-caller?
            (fn1 ret)
-           (platform/run #(fn1 ret)))
+           (executor/run #(fn1 ret)))
          ret)
        true)))
 
@@ -219,28 +229,28 @@ to catch and handle."
   [chan]
   (impl/close! chan))
 
-(defonce ^:private id-gen ^platform/AtomicLongType (platform/atomic-long))
+(defonce ^:private id-gen ^AtomicLong (atomic-long/atomic-long))
 
 (defn- random-array
   [n]
-  (let [rand (platform/thread-local-random)
+  (let [rand (thread-local-random/thread-local-random)
         a (int-array n)]
     (loop [i 1]
       (if (= i n)
         a
-        (let [j (impl/next-int rand (inc i))]
+        (let [j (thread-local-random/nextInt rand (inc i))]
           (aset a i (aget a j))
           (aset a j i)
           (recur (inc i)))))))
 
 (defn- alt-flag []
-  (let [^impl/Lock m (platform/mutex)
+  (let [^Lock m (lock/mutex)
         flag (atom true)
-        id (impl/increment-and-get id-gen)]
+        id (atomic-long/incrementAndGet id-gen)]
     (reify
-     impl/Lock
-     (lock [_] (impl/lock m))
-     (unlock [_] (impl/unlock m))
+     Lock
+     (lock [_] (lock/lock m))
+     (unlock [_] (lock/unlock m))
 
      impl/Handler
      (active? [_] @flag)
@@ -252,9 +262,9 @@ to catch and handle."
 
 (defn- alt-handler [^Lock flag cb]
   (reify
-     impl/Lock
-     (lock [_] (impl/lock flag))
-     (unlock [_] (impl/unlock flag))
+     Lock
+     (lock [_] (lock/lock flag))
+     (unlock [_] (lock/unlock flag))
 
      impl/Handler
      (active? [_] (impl/active? flag))
@@ -289,9 +299,9 @@ to catch and handle."
     (or
      ret
      (when (contains? opts :default)
-       (impl/lock ^impl/Lock flag)
+       (lock/lock ^Lock flag)
        (let [got (and (impl/active? flag) (impl/commit flag))]
-         (impl/unlock ^impl/Lock flag)
+         (lock/unlock ^Lock flag)
          (when got
            (channels/box [(:default opts) :default])))))))
 
@@ -454,7 +464,7 @@ to catch and handle."
   (let [crossing-env (zipmap (keys &env) (repeatedly gensym))]
     `(let [c# (chan 1)
            captured-bindings# (Var/getThreadBindingFrame)]
-       (platform/run
+       (executor/run
          (^:once fn* []
           (let [~@(mapcat (fn [[l sym]] [sym `(^:once fn* [] ~(vary-meta l dissoc :tag))]) crossing-env)
                 f# ~(ioc/state-machine `(do ~@body) 1 [crossing-env &env] ioc/async-custom-terminators)
@@ -464,7 +474,7 @@ to catch and handle."
             (ioc/run-state-machine-wrapped state#))))
        c#)))
 
-(defonce ^:private ^Executor thread-macro-executor (platform/thread-macro-executor))
+(defonce ^:private ^Executor thread-macro-executor (executor/thread-macro-executor))
 
 (defn thread-call
   "Executes f in another thread, returning immediately to the calling
@@ -473,7 +483,7 @@ to catch and handle."
   [f]
   (let [c (chan 1)]
     (let [binds (Var/getThreadBindingFrame)]
-      (impl/execute thread-macro-executor
+      (executor/execute thread-macro-executor
                 (fn []
                   (Var/resetThreadBindingFrame binds)
                   (try
@@ -1083,8 +1093,8 @@ to catch and handle."
        (impl/take! ch
          (reify
           Lock
-          (lock [_] (impl/lock ^impl/Lock fn1))
-          (unlock [_] (impl/unlock ^impl/Lock fn1))
+          (lock [_] (lock/lock ^Lock fn1))
+          (unlock [_] (lock/unlock ^Lock fn1))
 
           impl/Handler
           (active? [_] (impl/active? fn1))
@@ -1226,7 +1236,7 @@ to catch and handle."
                               (recur (make-array Object n) 0)))))
                   (do (when (> idx 0)
                         (let [narray (make-array Object idx)]
-                          (System/arraycopy arr 0 narray 0 idx)
+                          (platform/array-copy arr narray idx)
                           (>! out (vec narray))))
                       (close! out))))))
        out)))
@@ -1239,20 +1249,20 @@ to catch and handle."
      (partition-by f ch nil))
   ([f ch buf-or-n]
      (let [out (chan buf-or-n)]
-       (go (loop [lst (platform/array-list)
+       (go (loop [lst (array-list/array-list)
                   last ::nothing]
              (let [v (<! ch)]
                (if (not (nil? v))
                  (let [new-itm (f v)]
                    (if (or (= new-itm last)
                            (identical? last ::nothing))
-                     (do (impl/add lst v)
+                     (do (array-list/add lst v)
                          (recur lst new-itm))
-                     (do (>! out (impl/to-vec lst))
-                         (let [new-lst (platform/array-list)]
-                           (impl/add new-lst v)
+                     (do (>! out (array-list/vec lst))
+                         (let [new-lst (array-list/array-list)]
+                           (array-list/add new-lst v)
                            (recur new-lst new-itm)))))
-                 (do (when (> (impl/size lst) 0)
-                       (>! out (impl/to-vec lst)))
+                 (do (when (> (array-list/size lst) 0)
+                       (>! out (array-list/vec lst)))
                      (close! out))))))
        out)))

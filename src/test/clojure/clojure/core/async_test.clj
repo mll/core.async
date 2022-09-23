@@ -1,6 +1,6 @@
 (ns clojure.core.async-test
   (:refer-clojure :exclude [map into reduce transduce merge take partition partition-by])
-  (:require [clojure.core.async.impl.buffers :as b]
+  (:require [clojure.core.async.impl.platform.buffers :as b]
             [clojure.core.async :refer :all :as a]
             [clojure.test :refer :all]))
 
